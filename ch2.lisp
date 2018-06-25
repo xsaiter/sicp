@@ -56,21 +56,42 @@
 ;;; set
 ;;;
 
-(defun contains-set? (x set)
+;; unordered
+
+(defun element-of-unordered-set? (x set)
   (cond
     ((null set) nil)
-    ((equal x (car set)) x)
-    (t (contains-set? x (cdr x)))))
-    
+    ((= x (car set)) x)
+    (t (element-of-unordered-set? x (cdr x)))))
 
-(defun add-to-set (x set)
-  (if (contains-set? x set)
+    
+(defun add-to-unordered-set (x set)
+  (if (element-of-unordered-set? x set)
       set
       (cons x set)))
 
-(defun intersection-set (set1 set2)
-  (cond (or (null set1) (null set2) '())
-	(contains-set? (car set1) set2)
-	(cons (car set1)
-	      (intersection-set (cdr set1) set2))
-	(t (intersection-set (cdr set1) set2))))
+
+(defun intersection-unordered-set (set1 set2)
+  (cond
+    ((or (null set1) (null set2)) '())
+    ((element-of-unordered-set? (car set1) set2)
+     (cons (car set1) (intersection-unordered-set (cdr set1) set2)))
+    (t (intersection-unordered-set (cdr set1) set2))))
+
+;; ordered
+
+(defun element-of-ordered-set? (x set)
+  (cond
+    ((null set) nil)
+    ((= x (car set)) set)
+    ((< x (car set)) (element-of-ordered-set?  (cdr set)))
+    (t nil)))
+
+
+(defun add-to-ordered-set (x set)
+  (cond
+    ((= x (car set)) set)
+    ((< x (car set))
+     (add-to-set-ordered (x (cdr set))))
+    (t set)))
+      
