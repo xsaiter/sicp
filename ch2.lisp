@@ -90,8 +90,11 @@
 
 (defun add-to-ordered-set (x set)
   (cond
-    ((= x (car set)) set)
+    ((null set)
+     (cons x nil))    
+    ((> x (car set))
+     (cons (car set) (add-to-ordered-set x (cdr set))))
     ((< x (car set))
-     (add-to-set-ordered (x (cdr set))))
+     (cons x set))
     (t set)))
       
