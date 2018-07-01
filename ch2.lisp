@@ -73,7 +73,7 @@
 
 (defun intersection-unordered-set (set1 set2)
   (cond
-    ((or (null set1) (null set2)) '())
+    ((or (null set1) (null set2)) nil)
     ((element-of-unordered-set? (car set1) set2)
      (cons (car set1) (intersection-unordered-set (cdr set1) set2)))
     (t (intersection-unordered-set (cdr set1) set2))))
@@ -97,4 +97,17 @@
     ((< x (car set))
      (cons x set))
     (t set)))
+      
+(defun intersection-ordered-set (set1 set2)
+  (if (or (null set1) (null set2))
+      nil
+      (let ((x1 (car set1)) (x2 (car set2)))
+	(cond ((= x1 x2)
+	       (cons x1
+		     (intersection-ordered-set (cdr set1)
+					       (cdr set2))))
+	      ((< x1 x2)
+	       (intersection-ordered-set (cdr set1) set2))
+	      ((> x1 x2)
+	       (intersection-ordered-set set1 (cdr set2)))))))
       
