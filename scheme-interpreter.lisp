@@ -1,17 +1,22 @@
-(defvar true t)
-(defvar false nil)
+(defparameter true t)
+(defparameter false nil)
+
+(defparameter the-empty-environment '())
 
 (defun true? (x)
-    (not (equal x false)))
+    (not (null x)))
 
 (defun false? (x)
   (not (true? x)))
 
-(defun identity (x)
-  x)
-
 (defun pair? (x)
   (not (atom x)))
+
+(defun set-car! (lst x)
+  (setf (car lst) x) lst)
+
+(defun set-cdr! (lst x)
+  (setf (cdr lst) x) lst)
 
 (defun s-eval (exp env)
   (cond ((self-evaluating? exp) exp)
@@ -26,11 +31,11 @@
                          env))
         ((begin? exp)
          (eval-sequence (begin-actions exp) env))
-        ((cond? exp) (eval (cond->if exp) env))
+        ((cond? exp) (s-eval (cond->if exp) env))
         ((application? exp)
          (s-apply (s-eval (operator exp) env)
                 (list-of-values (operands exp) env)))
-	(t (error "EVAL: unknown expression type" exp))))
+	(t (format t "EVAL: unknown expression type"))))
 
 (defun s-apply (procedure arguments)
   (cond ((primitive-procedure? procedure)
@@ -42,12 +47,12 @@
              (procedure-parameters procedure)
              arguments
              (procedure-environment procedure))))
-        (t (error "APPLY: unknow procedure type" procedure))))
+        (t (format t "APPLY: unknow procedure type"))))
 
 (defun list-of-values (exps env)
   (if (no-operands? exps)
     '()
-    (cons (eval (first-operand exps) env)
+    (cons (s-eval (first-operand exps) env)
                 (list-of-values (rest-operands exps) env))))
 
 (defun eval-if (exp env)
@@ -68,7 +73,7 @@
 
 (defun eval-definition (exp env)
   (define-variable! (definition-variable exp)
-                    (eval (definition-value exp) env)
+                    (s-eval (definition-value exp) env)
                     env)
   'ok)
 
@@ -203,15 +208,14 @@
   (expand-clauses (cond-clauses exp)))
 
 (defun expand-clauses (clauses)
-  (if (null clauses)
-      'false                         
+  (if (null clauses)      
+      'false      
       (let ((first (car clauses))
             (rest (cdr clauses)))
         (if (cond-else-clause? first)
             (if (null rest)
                 (sequence->exp (cond-actions first))
-                (error "ELSE clause isn't last -- COND->IF"
-                       clauses))
+                (format t "error: ELSE clause isn't last -- COND->IF"))	    
             (make-if (cond-predicate first)
                      (sequence->exp (cond-actions first))
                      (expand-clauses rest))))))
@@ -262,49 +266,60 @@
   (if (= (length vars) (length vals))
     (cons (make-frame vars vals) base-env)
     (if (< (length vars) (length vals))
-      (error "many arguments" vars vals)
-      (error "few arguments" vars vals))))
+	(format t "many arguments")
+	(format t "few arguments"))))
 
-(defun lookup-variable-value (var env)
-  (defun env-loop (env)
-    (defun scan (vars vals)
-      (cond ((null vars)
-             (env-loop (enclosing-environment env)))
-            ((equal var (car vars))
-             (car vals))
-            (t (scan (cdr vars) (cdr vals)))))
-    (if (equal env the-empty-environment)
-      (error "Unbound variable" var)
+;;;
+;;;
+
+(defun lvv-scan (vars vals var env)
+  (cond ((null vars)
+	 (lvv-env-loop (enclosing-environment env) var))
+	((equal var (car vars))
+	 (car vals))
+	(t (lvv-scan (cdr vars) (cdr vals) var env))))
+
+(defun lvv-env-loop (env var)
+  (if (equal env the-empty-environment)
+      (format t "error: unbound variable")
       (let ((frame (first-frame env)))
-        (scan (frame-variables frame)
-              (frame-values frame)))))
-  (env-loop env))
+	(lvv-scan (frame-variables frame) (frame-values frame) var env))))
 
-(defun set-variable-value! (var val env)
-  (defun env-loop (env)
-    (defun (scan vars vals)
-      (cond ((null vars)
-             (env-loop (enclosing-environment env)))
-            ((eq? var (car vars))
-             (set-car! vals val))
-            (t (scan (cdr vars) (cdr vals)))))
+(defun lookup-variable-value (var env)  
+  (lvv-env-loop env var))
+
+;;;
+;;;
+
+(defun svv-scan (env vars vals var val)
+  (cond ((null vars)
+	 (svv-env-loop (enclosing-environment env) var val))
+	((equal var (car vars))
+	 (set-car! vals val))
+	(t (svv-scan env (cdr vars) (cdr vals) var val))))
+
+(defun svv-env-loop (env var val)    
     (if (equal env the-empty-environment)
-        (error "Unbound variable -- SET!" var)
+        (format t "error: unbound variable -- SET!")
         (let ((frame (first-frame env)))
-          (scan (frame-variables frame)
-                (frame-values frame)))))
-  (env-loop env))
+          (svv-scan env (frame-variables frame) (frame-values frame) var val))))
+
+(defun set-variable-value! (var val env)  
+  (svv-env-loop env var val))
+
+;;;
+;;;
+
+(defun df-scan (vars vals var val env frame)
+  (cond ((null vars)	 
+	 (add-binding-to-the-frame! var val frame))
+	((equal var (car vars))
+	 (set-car! vals val))
+	(t (df-scan (cdr vars) (cdr vals) var val env frame))))
 
 (defun define-variable! (var val env)
   (let ((frame (first-frame env)))
-    (defun scan (vars vals)
-      (cond ((null vars)
-             (add-binding-to-the-frame! var val frame))
-            ((equal var (car vars))
-             (set-car! vals val))
-            (t (scan (cdr vars) (cdr vals)))))
-    (scan (frame-variables frame)
-          (frame-values frame))))
+    (df-scan (frame-variables frame) (frame-values frame) var val env frame)))
 
 (defun primitive-procedure? (proc)    
     (tagged-list? proc 'primitive))
@@ -313,21 +328,21 @@
   (cadr proc))
 
 (defun primitive-procedures ()
-  (list (list 'car car)
-        (list 'cdr cdr)
-        (list 'cons cons)
-        (list 'null null)
-        (list '+ +)
-        (list '- -)
-        (list '* *)
-        (list '/ /)))
+  (list (list 'car 'car)
+        (list 'cdr 'cdr)
+        (list 'cons 'cons)
+        (list 'null 'null)
+        (list '+ '+)
+        (list '- '-)
+        (list '* '*)
+        (list '/ '/)))
 
 (defun primitive-procedure-names ()
-  (map car primitive-procedures))
+  (mapcar #'car (primitive-procedures)))
 
 (defun primitive-procedure-objects ()
-  (map (lambda (proc) (list 'primitive (cadr proc)))
-       primitive-procedures))
+  (mapcar #'(lambda (proc) (list 'primitive (cadr proc)))
+       (primitive-procedures)))
 
 (defun setup-environment ()
   (let ((initial-env
@@ -338,32 +353,25 @@
     (define-variable! 'false false initial-env)
     initial-env))
 
-(defvar the-global-environment (setup-environment))
-
 (defun apply-primitive-procedure (proc args)
   (apply (primitive-implementation proc) args))
 
-(defvar input-prompt ";;; M-Eval input:")
-(defvar output-prompt ";;; M-Eval value:")
+(defparameter input-prompt ";;; M-Eval input:")
+(defparameter output-prompt ";;; M-Eval value:")
 
 (defun driver-loop ()
   (prompt-for-input input-prompt)
   (let ((input (read)))
-    (let ((output (eval input the-global-environment)))
-      (announce-output output-prompt)
-      (user-print output)))
+    (let ((output (s-eval input the-global-environment)))
+      (print-output output)))
   (driver-loop))
 
 (defun prompt-for-input (string)
-  (newline) (newline) (display string) (newline))
+  (format t "~A" string))
 
-(defun announce-output (string)
-  (newline) (display string) (newline))
+(defun print-output (string)
+  (format t "~A" string))
 
-(defun user-print (object)
-  (if (compound-procedure? object)
-      (display (list 'compound-procedure
-                     (procedure-parameters object)
-                     (procedure-body object)
-                     '<procedure-env>))
-      (display object)))
+(defparameter the-global-environment (setup-environment))
+
+(driver-loop)
